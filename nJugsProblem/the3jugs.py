@@ -73,9 +73,25 @@ class NJugsProblem(SearchProblem):
     i corresponds to the jug affected by the action
     j is a valid number only if the action is "pour" (i.e. pour from jug i into jug j). Otherwise it should be set to None
     """
-    def actions(state):
-        raise NotImplementedError
+    def actions(self, state):
+        actions = []
 
+        for i in range(self.n):
+            # Fill action (only if jug not already full)
+            if state[i] < self.capacities[i]:
+                actions.append(("fill", i, None))
+
+            # Empty action (only if jug not already empty)
+            if state[i] > 0:
+                actions.append(("empty", i, None))
+
+            # Pour actions
+            if state[i] > 0:  # can only pour if source has water
+                for j in range(self.n):
+                    if i != j and state[j] < self.capacities[j]:
+                        actions.append(("pour", i, j))
+
+        return actions
     """
     Returns the state of the jugs after taking action (kind, i, j), without modifying the original state.
 
@@ -89,8 +105,46 @@ class NJugsProblem(SearchProblem):
     implementation of this function. You’ll likely want to make a 
     copy of the state first before making any changes.
     """
-    def succ(state, action):
-        raise NotImplementedError
+    def succ(self, state, action):
+        kind, i, j = action
+
+        if i < 0 or i >= self.n:
+            raise ValueError("Invalid jug index.")
+
+        # Make a copy of state (important: do NOT modify original)
+        new_state = list(state)
+
+        if kind == "fill":
+            if new_state[i] == self.capacities[i]:
+                raise ValueError("Jug already full.")
+            new_state[i] = self.capacities[i]
+
+        elif kind == "empty":
+            if new_state[i] == 0:
+                raise ValueError("Jug already empty.")
+            new_state[i] = 0
+
+        elif kind == "pour":
+            if j is None or j < 0 or j >= self.n or i == j:
+                raise ValueError("Invalid pour action.")
+
+            if new_state[i] == 0:
+                raise ValueError("Source jug is empty.")
+
+            if new_state[j] == self.capacities[j]:
+                raise ValueError("Destination jug is full.")
+
+            # Amount we can pour
+            amount = min(new_state[i],
+                         self.capacities[j] - new_state[j])
+
+            new_state[i] -= amount
+            new_state[j] += amount
+
+        else:
+            raise ValueError("Unknown action type.")
+
+        return tuple(new_state)
 
 
     # ---- Helpers ----

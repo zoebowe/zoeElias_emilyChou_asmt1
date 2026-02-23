@@ -130,48 +130,64 @@ class BFSSearch:
         self.problem = problem
 
     def solve(self):
-        from collections import deque
-        best_cost = math.inf
-        best_path = None
-        explored = set()
+        start_time = time.perf_counter()
 
         start = self.problem.start_state()
-        start_key = str(start)
-        explored.add(start_key)
+        explored = set([str(start)])
 
-        # Queue holds tuples: (state, path_from_after_start, cost_so_far)
         q = deque()
-        q.append((start, [], 0))
+        # (state, path_after_start, cost, depth)
+        q.append((start, [], 0, 0))
+
+        expanded = 0
+        generated = 0
+        D = 0
+        d = None
 
         while q:
-            state, path, cost = q.popleft()
+            state, path, cost, depth = q.popleft()
 
-            # Goal check
+            # Expand
+            expanded += 1
+            D = max(D, depth)
+
+            # Goal check (BFS => first goal is shallowest)
             if self.problem.is_end(state):
-                # BFS finds shortest solution in number of moves, so we can return immediately
-                best_cost = cost
-                best_path = path[:]  # copy
+                d = depth
+                elapsed = time.perf_counter() - start_time
+                b = (generated / expanded) if expanded else 0.0
                 return dict(
-                    best_cost=best_cost,
-                    best_path=[self.problem.start_state()] + (best_path or []),
-                    found=(best_path is not None),
+                    best_cost=cost,
+                    best_path=[start] + path,
+                    found=True,
                     expanded=len(explored),
+                    b=b,
+                    D=D,
+                    d=d,
+                    time=elapsed,
                 )
-            
-            for action in self.problem.actions(state):
-                next_state = self.problem.succ(state, action)
-                key = str(next_state)
-                if key not in explored:
-                    explored.add(key)
-                    next_cost = cost + self.problem.cost(state, action)
-                    q.append((next_state, path + [next_state], next_cost))
 
-        # No solution found
+            actions = list(self.problem.actions(state))
+            generated += len(actions)
+
+            for action in actions:
+                nxt = self.problem.succ(state, action)
+                k = str(nxt)
+                if k not in explored:
+                    explored.add(k)
+                    q.append((nxt, path + [nxt], cost + self.problem.cost(state, action), depth + 1))
+
+        elapsed = time.perf_counter() - start_time
+        b = (generated / expanded) if expanded else 0.0
         return dict(
-            best_cost=best_cost,
-            best_path=[self.problem.start_state()] + (best_path or []),
-            found=(best_path is not None),
+            best_cost=math.inf,
+            best_path=[start],
+            found=False,
             expanded=len(explored),
+            b=b,
+            D=D,
+            d=d,
+            time=elapsed,
         )
 
 """
@@ -186,54 +202,80 @@ returns a dictionary with the following informatin:
     expanded= # of state explored
 """
 class DFSSearch:
-
-
     def __init__(self, problem: SearchProblem):
         self.problem = problem
 
     def solve(self):
-        best_cost = math.inf
-        best_path = None
-        explored = set()
+        start_time = time.perf_counter()
 
         start = self.problem.start_state()
-        start_key = str(start)
-        explored.add(start_key)
+        explored = set([str(start)])
 
-        # Stack holds tuples: (state, path_from_after_start, cost_so_far)
-        stack = [(start, [], 0)]
+        stack = []
+        # (state, path_after_start, cost, depth)
+        stack.append((start, [], 0, 0))
+
+        expanded = 0
+        generated = 0
+        D = 0
+        d = None
+
+        best_cost = math.inf
+        best_path = None
 
         while stack:
-            state, path, cost = stack.pop()
+            state, path, cost, depth = stack.pop()
 
-            # Goal check: return first solution found (DFS order)
+            # Expand
+            expanded += 1
+            D = max(D, depth)
+
+            # Goal check (DFS: first found may not be shallowest)
             if self.problem.is_end(state):
-                best_cost = cost
-                best_path = path[:]  # copy
-                return dict(
-                    best_cost=best_cost,
-                    best_path=[self.problem.start_state()] + (best_path or []),
-                    found=(best_path is not None),
-                    expanded=len(explored),
-                )
+                if depth is not None:
+                    d = depth if d is None else min(d, depth)
+                # Keep first solution semantics OR keep best seen:
+                # Here we keep the FIRST solution found as "best_path" (typical DFS),
+                # but still compute d as the shallowest goal encountered during the run.
+                if best_path is None:
+                    best_cost = cost
+                    best_path = path[:]
+                    # If you want classic "stop at first solution", uncomment:
+                    elapsed = time.perf_counter() - start_time
+                    b = (generated / expanded) if expanded else 0.0
+                    return dict(
+                        best_cost=best_cost,
+                        best_path=[start] + best_path,
+                        found=True,
+                        expanded=len(explored),
+                        b=b,
+                        D=D,
+                        d=d,
+                        time=elapsed,
+                    )
+                # If you prefer exploring entire space to compute D more fully,
+                # remove the early return above.
 
-            # Expand: push children so that the first action is explored first (reverse)
             actions = list(self.problem.actions(state))
-            for action in reversed(actions):
-                next_state = self.problem.succ(state, action)
-                key = str(next_state)
-                if key not in explored:
-                    explored.add(key)
-                    next_cost = cost + self.problem.cost(state, action)
-                    stack.append((next_state, path + [next_state], next_cost))
+            generated += len(actions)
 
-        # No solution found
+            # Reverse so first action is explored first (matches recursive order idea)
+            for action in reversed(actions):
+                nxt = self.problem.succ(state, action)
+                k = str(nxt)
+                if k not in explored:
+                    explored.add(k)
+                    stack.append((nxt, path + [nxt], cost + self.problem.cost(state, action), depth + 1))
+
+        elapsed = time.perf_counter() - start_time
+        b = (generated / expanded) if expanded else 0.0
         return dict(
             best_cost=best_cost,
-            best_path=[self.problem.start_state()] + (best_path or []),
+            best_path=[start] + (best_path or []),
             found=(best_path is not None),
             expanded=len(explored),
+            b=b,
+            D=D,
+            d=d,
+            time=elapsed,
         )
-
-
-
